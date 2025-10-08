@@ -1,7 +1,7 @@
 seed: 42
 data:
   dataset: iu_xray
-  text_field: findings   # fallback: impression
+  text_field: findings
   max_samples: 50
   val_frac: 0.1
   test_frac: 0.1

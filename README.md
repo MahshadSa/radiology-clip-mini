@@ -49,7 +49,7 @@ radiology-clip-mini/
 
 
 # Quickstart (local)
-git clone https://github.com/<you>/radiology-clip-mini.git
+git clone https://github.com/MahshadSa/radiology-clip-mini.git
 cd radiology-clip-mini
 python -m venv .venv && source .venv/bin/activate   # (Windows: .venv\Scripts\activate)
 pip install -r requirements.txt
@@ -61,8 +61,9 @@ python -m src.train --config configs/tiny.yaml
 python -m src.eval  --ckpt results/*/checkpoint.pt
 python -m src.viz   --ckpt results/*/checkpoint.pt
 
+
 # Quickstart (Kaggle Notebook)
-!git clone https://github.com/<you>/radiology-clip-mini.git
+!git clone https://github.com/MahshadSa/radiology-clip-mini.git
 %cd radiology-clip-mini
 !pip install -r requirements.txt
 
