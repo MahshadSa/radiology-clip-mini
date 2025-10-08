@@ -18,6 +18,7 @@ Text field: findings (fallback: impression).
 Subsample: max_samples=50 (patient-level) for fast iteration.
 
 ## Structure
+```text
 radiology-clip-mini/
 ├─ README.md
 ├─ requirements.txt
@@ -44,6 +45,7 @@ radiology-clip-mini/
 └─ scripts/
    ├─ make_splits.py
    └─ export_minimal_weights.py
+```
 
 
 # Quickstart (local)
