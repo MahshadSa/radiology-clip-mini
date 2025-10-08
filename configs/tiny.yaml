@@ -1,0 +1,19 @@
+seed: 42
+data:
+  dataset: iu_xray
+  text_field: findings   # fallback: impression
+  max_samples: 50
+  val_frac: 0.1
+  test_frac: 0.1
+train:
+  epochs: 8
+  batch_size: 16
+  lr_image_head: 1.0e-3
+  lr_text: 3.0e-5
+  temperature: 0.07
+model:
+  image_encoder: resnet18
+  text_encoder: distilbert-base-uncased
+  embed_dim: 256
+paths:
+  results_dir: results

@@ -18,32 +18,7 @@ Text field: findings (fallback: impression).
 Subsample: max_samples=50 (patient-level) for fast iteration.
 
 ## Structure
-radiology-clip-mini/
-├─ README.md
-├─ requirements.txt
-├─ setup.cfg
-├─ .gitignore
-├─ src/
-│  ├─ rclip/__init__.py
-│  ├─ data.py              # load/clean IU X-Ray, split, dataloaders
-│  ├─ text.py              # report → findings section, cleaning/tokenization
-│  ├─ models.py            # image encoder (ViT/ResNet), text encoder (DistilBERT), projection heads
-│  ├─ train.py             # contrastive training loop (InfoNCE), logging, checkpoints
-│  ├─ eval.py              # Recall@K, median rank, nDCG
-│  ├─ viz.py               # Grad-CAM/attention maps, retrieval viz
-│  └─ utils.py             # seed, config, small helpers
-├─ notebooks/
-│  ├─ 00_data_preview.ipynb
-│  ├─ 10_train_rclip.ipynb
-│  ├─ 20_eval_retrieval.ipynb
-│  └─ 30_viz_gradcam.ipynb
-├─ configs/
-│  └─ tiny.yaml            # batch_size, lr, epochs, encoders, text field choice
-├─ data/                   # (empty; Kaggle will download on the fly)
-├─ results/                # figures, metrics, checkpoints (gitignored)
-└─ scripts/
-   ├─ make_splits.py
-   └─ export_minimal_weights.py
+<pre> ``` radiology-clip-mini/ ├─ README.md ├─ requirements.txt ├─ setup.cfg ├─ .gitignore ├─ src/ │ ├─ rclip/__init__.py │ ├─ data.py # load/clean IU X-Ray, split, dataloaders │ ├─ text.py # report → findings section, cleaning/tokenization │ ├─ models.py # image encoder (ViT/ResNet), text encoder (DistilBERT), projection heads │ ├─ train.py # contrastive training loop (InfoNCE), logging, checkpoints │ ├─ eval.py # Recall@K, median rank, nDCG │ ├─ viz.py # Grad-CAM/attention maps, retrieval viz │ └─ utils.py # seed, config, small helpers ├─ notebooks/ │ ├─ 00_data_preview.ipynb │ ├─ 10_train_rclip.ipynb │ ├─ 20_eval_retrieval.ipynb │ └─ 30_viz_gradcam.ipynb ├─ configs/ │ └─ tiny.yaml # batch_size, lr, epochs, encoders, text field choice ├─ data/ # (empty; Kaggle will download on the fly) ├─ results/ # figures, metrics, checkpoints (gitignored) └─ scripts/ ├─ make_splits.py └─ export_minimal_weights.py ``` </pre>
 
 # Quickstart (local)
 git clone https://github.com/<you>/radiology-clip-mini.git
