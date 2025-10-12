@@ -1,168 +1,121 @@
 from __future__ import annotations
-
-import json
-import re
 from pathlib import Path
 from typing import Dict, List, Tuple
+import json
+import random
 
-import numpy as np
-from datasets import load_dataset, Dataset, DatasetDict, concatenate_datasets
+import torch
+from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms
+from datasets import load_dataset
 
-PATIENT_ID_KEYS = ("patient_id", "uid", "subject_id", "pid")
+# Text helpers 
+TEXT_PRIORITY = ("findings", "impression", "report", "text")
+PATIENT_KEYS = ("patient_id", "uid", "subject_id", "pid")
 
-def pick_text(
-    record: Dict,
-    preferred_fields: Tuple[str, ...] = ("findings", "impression", "report"),
-) -> str:
-    """Return the first non-empty text field, in priority order."""
-    for key in preferred_fields:
-        value = record.get(key, "")
-        if isinstance(value, str):
-            value = value.strip()
-            if value:
-                return value
-    value = record.get("text", "")
-    return value.strip() if isinstance(value, str) else ""
+def pick_text(rec: Dict, fields: Tuple[str, ...] = TEXT_PRIORITY) -> str:
+    for k in fields:
+        v = rec.get(k, "")
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return ""
 
+def get_patient_id(rec: Dict) -> str:
+    for k in PATIENT_KEYS:
+        v = rec.get(k)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    # fallback: derive from image or id
+    v = str(rec.get("id", "unknown"))
+    return v.split("_")[0]
 
-def derive_patient_id(record: Dict) -> str:
-    """
-    Get patient/group ID.
+class IUXRayPairs(Dataset):
+    def __init__(self, hf_split, image_size: int = 320):
+        self.ds = hf_split
+        self.tform = transforms.Compose([
+            transforms.Resize(image_size),
+            transforms.CenterCrop(image_size),
+            transforms.ToTensor(),
+        ])
+        # precompute indices)
+        self.keep = []
+        for i, rec in enumerate(self.ds):
+            if rec.get("image") is None:
+                continue
+            if pick_text(rec):
+                self.keep.append(i)
 
-    Priority:
-      1) Known patient-id keys.
-      2) Extract a numeric chunk.
-      3) Checks for "uid" or "id".
-      4) Last-resort: a hash over the record's items.
-    """
-    for key in PATIENT_ID_KEYS:
-        value = record.get(key)
-        if value:
-            return str(value)
+    def __len__(self): return len(self.keep)
 
-    for key in ("image_id", "image_path", "path", "image"):
-        if key in record and record[key]:
-            s = str(record[key])
-            m = re.search(r"(\d{3,})", s)  # first long numeric run
-            if m:
-                return m.group(1)
+    def __getitem__(self, i: int):
+        rec = self.ds[self.keep[i]]
+        img = rec["image"].convert("RGB")
+        txt = pick_text(rec)
+        pid = get_patient_id(rec)
+        img = self.tform(img)
+        return {"image": img, "text": txt, "pid": pid}
 
-    for key in ("uid", "id"):
-        value = record.get(key)
-        if value:
-            s = str(value)
-            m = re.search(r"(\d{3,})", s)
-            return m.group(1) if m else s
-
-    # If no usable ID is found
-    try:
-        stable = json.dumps(record, sort_keys=True)
-        return str(abs(hash(stable)))
-    except Exception:
-        return str(abs(hash(tuple(sorted(record.items())))))
-
-
-def concat_all_splits(ds: DatasetDict) -> Dataset:
-    """Concatenate train/validation/test splits if multiple exist."""
-    parts = list(ds.values())
-    return parts[0] if len(parts) == 1 else concatenate_datasets(parts)
-
-
-def subsample_by_patient(
-    indices: np.ndarray,
-    patient_ids: List[str],
-    max_samples: int,
-    rng: np.random.Generator,
-) -> np.ndarray:
-    patients = np.array([patient_ids[i] for i in indices])
-    unique_patients = np.unique(patients)
-    rng.shuffle(unique_patients)
-
-    kept: List[int] = []
-    for p in unique_patients:
-        kept.extend(indices[patients == p].tolist())
-        if len(kept) >= max_samples:
-            break
-    return np.array(kept[:max_samples], dtype=int)
-
-
-def load_iu_xray_flat(
-    preferred_fields: Tuple[str, ...] = ("findings", "impression", "report")) -> Dict[str, List]:
-
-    ds: DatasetDict = load_dataset("iu_xray")
-    full: Dataset = concat_all_splits(ds)
-
-    images, texts, patient_ids = [], [], []
-    for rec in full:
-        txt = pick_text(rec, preferred_fields)
-        img = rec.get("image", None)  # HF returns PIL images 
-        if img is None or not txt:
+# Splits (patient-level)
+def _make_patient_splits(records, max_patients: int, val_frac=0.1, test_frac=0.1, seed=42):
+    rng = random.Random(seed)
+    pids = []
+    seen = set()
+    for r in records:
+        if r.get("image") is None: 
             continue
-        pid = derive_patient_id(rec)
-        images.append(img)
-        texts.append(txt)
-        patient_ids.append(pid)
+        if not pick_text(r): 
+            continue
+        pid = get_patient_id(r)
+        if pid not in seen:
+            seen.add(pid); pids.append(pid)
+    rng.shuffle(pids)
+    if max_patients is not None and max_patients > 0:
+        pids = pids[:max_patients]
+    n = len(pids)
+    n_test = max(1, int(n * test_frac))
+    n_val  = max(1, int(n * val_frac))
+    test_p = set(pids[:n_test])
+    val_p  = set(pids[n_test:n_test+n_val])
+    train_p= set(pids[n_test+n_val:])
+    return {"train": list(train_p), "val": list(val_p), "test": list(test_p)}
 
-    return {"image": images, "text": texts, "patient_id": patient_ids}
+def _filter_by_pids(hf_ds, keep_pids: set):
+    idx = [i for i, r in enumerate(hf_ds) if get_patient_id(r) in keep_pids and pick_text(r) and r.get("image") is not None]
+    return hf_ds.select(idx)
 
-
-def create_patient_splits(
-    n_examples: int,
-    patient_ids: List[str],
-    val_frac: float = 0.1,
-    test_frac: float = 0.1,
-    seed: int = 42,
-) -> Dict[str, List[int]]:
+def build_dataloaders(cfg):
     """
-    Make patient-level splits and return absolute index lists.
+    Returns: dict(train=DataLoader, val=DataLoader, test=DataLoader)
     """
-    assert 0 < val_frac < 0.5 and 0 < test_frac < 0.5 and (val_frac + test_frac) < 0.9
+    image_size = int(cfg["data"]["image_size"])
+    num_workers = int(cfg["data"].get("num_workers", 2))
+    max_patients = int(cfg["data"].get("max_patients", 50))
+    split_file = cfg["data"].get("split_file", "data/splits.json")
 
-    rng = np.random.default_rng(seed)
-    all_idx = np.arange(n_examples)
-    pids = np.array(patient_ids)
-    unique_patients = np.unique(pids)
-    rng.shuffle(unique_patients)
+    ds = load_dataset("iu_xray")["train"]  # iu_xray provides everything under 'train'
+    sp = Path(split_file)
+    if sp.exists():
+        splits = json.loads(sp.read_text())
+    else:
+        splits = _make_patient_splits(ds, max_patients=max_patients, seed=int(cfg["seed"]))
+        sp.parent.mkdir(parents=True, exist_ok=True)
+        sp.write_text(json.dumps(splits, indent=2))
+    p_train, p_val, p_test = map(set, (splits["train"], splits["val"], splits["test"]))
 
-    n_val = max(1, int(round(len(unique_patients) * val_frac)))
-    n_test = max(1, int(round(len(unique_patients) * test_frac)))
-    n_train = max(1, len(unique_patients) - n_val - n_test)
+    ds_train = _filter_by_pids(ds, p_train)
+    ds_val   = _filter_by_pids(ds, p_val)
+    ds_test  = _filter_by_pids(ds, p_test)
 
-    train_pat = set(unique_patients[:n_train])
-    val_pat   = set(unique_patients[n_train:n_train + n_val])
-    test_pat  = set(unique_patients[n_train + n_val:])
+    train = IUXRayPairs(ds_train, image_size)
+    val   = IUXRayPairs(ds_val, image_size)
+    test  = IUXRayPairs(ds_test, image_size)
 
-    train_idx = all_idx[np.isin(pids, list(train_pat))].tolist()
-    val_idx   = all_idx[np.isin(pids, list(val_pat))].tolist()
-    test_idx  = all_idx[np.isin(pids, list(test_pat))].tolist()
+    def collate(batch):
+        imgs = torch.stack([b["image"] for b in batch])
+        texts= [b["text"] for b in batch]
+        return {"images": imgs, "texts": texts}
 
-    return {"train": train_idx, "val": val_idx, "test": test_idx}
-
-
-def build_indices_with_subsample(
-    patient_ids: List[str],
-    max_samples: int = 50,
-    val_frac: float = 0.1,
-    test_frac: float = 0.1,
-    seed: int = 42,
-) -> Dict[str, List[int]]:
-    rng = np.random.default_rng(seed)
-    all_indices = np.arange(len(patient_ids))
-    sub_indices = subsample_by_patient(all_indices, patient_ids, max_samples, rng)
-
-    # Create splits within the subset 
-    sub_pids = [patient_ids[i] for i in sub_indices]
-    rel_splits = create_patient_splits(len(sub_indices), sub_pids, val_frac, test_frac, seed)
-
-    # Map back to absolute indices
-    abs_splits = {k: [int(sub_indices[i]) for i in rel_idx] for k, rel_idx in rel_splits.items()}
-    return abs_splits
-
-
-def save_splits_json(splits: Dict[str, List[int]], path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
-        json.dump(splits, f, indent=2)
-
-
-
+    dl_train = DataLoader(train, batch_size=cfg["train"]["batch_size"], shuffle=True,  num_workers=num_workers, pin_memory=True, collate_fn=collate)
+    dl_val   = DataLoader(val,   batch_size=64,                          num_workers=num_workers, pin_memory=True, collate_fn=collate)
+    dl_test  = DataLoader(test,  batch_size=64,                          num_workers=num_workers, pin_memory=True, collate_fn=collate)
+    return {"train": dl_train, "val": dl_val, "test": dl_test}
