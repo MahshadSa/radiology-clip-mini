@@ -39,31 +39,47 @@ def get_patient_id(rec: Dict) -> str:
     v = str(rec.get("id", "unknown"))
     return v.split("_")[0]
 
+import binascii
 
-def _bytes_to_pil(b) -> Image.Image:
-    if isinstance(b, Image.Image):
-        return b.convert("RGB")
-    if isinstance(b, (bytes, bytearray)):
-        return Image.open(io.BytesIO(b)).convert("RGB")
-    if isinstance(b, str):  # base64 text
-        return Image.open(io.BytesIO(base64.b64decode(b))).convert("RGB")
-    raise TypeError("Unsupported image type")
-
+def _to_pil(x) -> Image.Image:
+    # 1) already PIL
+    if isinstance(x, Image.Image):
+        return x.convert("RGB")
+    # 2) raw bytes
+    if isinstance(x, (bytes, bytearray)):
+        return Image.open(io.BytesIO(x)).convert("RGB")
+    # 3) str → try base64, else treat as file path
+    if isinstance(x, str):
+        # try base64
+        try:
+            b = base64.b64decode(x, validate=True)
+            return Image.open(io.BytesIO(b)).convert("RGB")
+        except (binascii.Error, ValueError):
+            p = Path(x)
+            if p.exists():
+                return Image.open(p).convert("RGB")
+    raise TypeError(f"Unsupported image type: {type(x)!r}")
 
 def has_image(rec: Dict) -> bool:
     if "image" in rec and rec["image"] is not None:
         return True
     if "images" in rec and isinstance(rec["images"], (list, tuple)) and len(rec["images"]) > 0:
         return True
+    if "image_path" in rec or "img_path" in rec:
+        return True
     return False
-
 
 def get_pil_image(rec: Dict) -> Image.Image:
     if "image" in rec and rec["image"] is not None:
-        return _bytes_to_pil(rec["image"])
+        return _to_pil(rec["image"])
     if "images" in rec and rec["images"]:
-        return _bytes_to_pil(rec["images"][0])  # take first view
+        return _to_pil(rec["images"][0])  # first view
+    if "image_path" in rec:
+        return _to_pil(rec["image_path"])
+    if "img_path" in rec:
+        return _to_pil(rec["img_path"])
     raise KeyError("No image field found")
+
 
 
 class IUXRayPairs(Dataset):
