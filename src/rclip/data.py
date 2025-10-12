@@ -145,7 +145,7 @@ def build_dataloaders(cfg: Dict):
     if "image" in ds.features:
     if not isinstance(ds.features["image"], HFImage):
         ds = ds.cast_column("image", HFImage())
-elif "images" in ds.features:
+    elif "images" in ds.features:
     # list/sequence of images
     feat = ds.features["images"]
     if not (hasattr(feat, "feature") and isinstance(feat.feature, HFImage)):
