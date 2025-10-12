@@ -1,97 +1,87 @@
 # radiology-clip-mini
 
-Tiny, reproducible vision–language pipeline for chest X-rays.
-Goal: learn CLIP-style alignment between images and findings text on a ~50-case subsample of IU X-Ray (OpenI) and show retrieval + Grad-CAMs.
+Minimal CLIP-style baseline on IU X-Ray (≈50 paired cases) for image↔report retrieval and a single Grad-CAM example.
 
-# TL;DR
+## TL;DR
+- **Image encoder:** ResNet-18 (ImageNet) → MLP head → **256-D**
+- **Text encoder:** DistilBERT → MLP head → **256-D**
+- **Loss:** symmetric InfoNCE with learnable temperature τ
+- **Eval:** Recall@1/5/10, Median Rank, nDCG@10
+- **Hardware:** GTX-1650 or Kaggle T4; RAM ≥ 8 GB
 
-Encoders: ResNet-18 (image) + DistilBERT (text) → 256-D shared space
-Loss: symmetric InfoNCE w/ temperature
-Eval: Image↔Text Recall@K, Median Rank, nDCG@10
-Viz: Retrieval grids + Grad-CAM overlays
-Run local or on Kaggle (no manual data uploads; datasets pulls IU X-Ray)
-
-# Dataset
-
-IU X-Ray (OpenI) via 🤗 datasets ("iu_xray").
-Text field: findings (fallback: impression).
-Subsample: max_samples=50 (patient-level) for fast iteration.
-
-## Structure
-```text
+## Repo layout
 radiology-clip-mini/
-├─ README.md
-├─ requirements.txt
-├─ setup.cfg
-├─ .gitignore
-├─ src/
-│  ├─ rclip/__init__.py
-│  ├─ data.py              # load/clean IU X-Ray, split, dataloaders
-│  ├─ text.py              # report → findings section, cleaning/tokenization
-│  ├─ models.py            # image encoder (ViT/ResNet), text encoder (DistilBERT), projection heads
-│  ├─ train.py             # contrastive training loop (InfoNCE), logging, checkpoints
-│  ├─ eval.py              # Recall@K, median rank, nDCG
-│  ├─ viz.py               # Grad-CAM/attention maps, retrieval viz
-│  └─ utils.py             # seed, config, small helpers
-├─ notebooks/
-│  ├─ 00_data_preview.ipynb
-│  ├─ 10_train_rclip.ipynb
-│  ├─ 20_eval_retrieval.ipynb
-│  └─ 30_viz_gradcam.ipynb
-├─ configs/
-│  └─ tiny.yaml            # batch_size, lr, epochs, encoders, text field choice
-├─ data/                   # (empty; Kaggle will download on the fly)
-├─ results/                # figures, metrics, checkpoints (gitignored)
-└─ scripts/
-   ├─ make_splits.py
-   └─ export_minimal_weights.py
-```
+├─ configs/ # YAML configs (explicit hyper-params)
+├─ notebooks/ # thin wrappers calling library code
+├─ results/ # run outputs (metrics, ckpts, figs); git-ignored
+├─ src/rclip/ # library code (data, models, train, eval, viz)
+└─ scripts/ # small utilities 
 
 
-# Quickstart (local)
+## Quickstart (local)
+
 git clone https://github.com/MahshadSa/radiology-clip-mini.git
 cd radiology-clip-mini
-python -m venv .venv && source .venv/bin/activate   # (Windows: .venv\Scripts\activate)
+python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-# train (tiny config)
-python -m src.train --config configs/tiny.yaml
+# Train (writes results/<YYYYMMDD-HHMMSS>/ and updates results/latest.txt)
+python -m rclip.train --config configs/tiny.yaml
 
-# evaluate and visualize (uses latest checkpoint by default)
-python -m src.eval  --ckpt results/*/checkpoint.pt
-python -m src.viz   --ckpt results/*/checkpoint.pt
+# Evaluate + visualize using the pointer above
+python -m rclip.eval --ckpt "$(cat results/latest.txt)"
+python -m rclip.viz  --ckpt "$(cat results/latest.txt)"
 
 
-# Quickstart (Kaggle Notebook)
+
+**Quickstart (Kaggle)**
+
 !git clone https://github.com/MahshadSa/radiology-clip-mini.git
 %cd radiology-clip-mini
 !pip install -r requirements.txt
 
-!python -m src.train --config configs/tiny.yaml
-!python -m src.eval  --ckpt $(ls -t results/*/checkpoint.pt | head -n1)
-!python -m src.viz   --ckpt $(ls -t results/*/checkpoint.pt | head -n1)
+!python -m rclip.train --config configs/tiny.yaml
+!python -m rclip.eval  --ckpt $(cat results/latest.txt)
+!python -m rclip.viz   --ckpt $(cat results/latest.txt)
 
-# What’s inside (modules)
 
-src/data.py:
-   Loads IU X-Ray, extracts (image, findings_text), patient-level splits, transforms.
+## Data
 
-src/text.py:
-   Findings extraction & cleanup; DistilBertTokenizerFast tokenization.
+Dataset: IU X-Ray (OpenI) via datasets (iu_xray).
+Text field priority: findings → impression → report → text.
+Split: patient-level (avoid leakage).
+Uses a ~50-patient subset for speed (adjust in configs/tiny.yaml).
 
-src/models.py:
-   ResNet-18 (pretrained) → projection head; DistilBERT → projection head; L2-norm to shared space.
+## Configuration
+seed: 42
+data:
+  dataset: iu_xray
+  text_field: findings
+  max_samples: 50
+  val_frac: 0.1
+  test_frac: 0.1
+train:
+  epochs: 8
+  batch_size: 16
+  lr_image_head: 1.0e-3
+  lr_text: 3.0e-5
+  temperature: 0.07
+model:
+  image_encoder: resnet18
+  text_encoder: distilbert-base-uncased
+  embed_dim: 256
+paths:
+  results_dir: results
 
-src/train.py:
-   Symmetric contrastive loss (image→text & text→image), temperature τ, mixed precision, checkpointing.
+## Repro notes
+Deterministic seeds; config + git hash saved to results/<run>/run.json.
+Metrics saved to results/<run>/metrics.json.
+A small sample of figures lives under results/sample/.
 
-src/eval.py:
-   Recall@1/5/10, Median Rank, nDCG@10 for both directions; saves metrics.json.
+## Cite
+Radford et al., Learning Transferable Visual Models From Natural Language Supervision (CLIP), 2021.
+Demner-Fushman et al., Preparing a Collection of Radiology Examinations for Distribution and Retrieval, 2016 (IU X-Ray).
 
-src/viz.py:
-   Retrieval grids; Grad-CAM on last conv block of ResNet-18; overlays saved as PNGs.
+## License & ethics
 
-# Citation / Related
-
-   CLIP: Radford et al., 2021
-   IU X-Ray (OpenI): Demner-Fushman et al., 2016
+MIT. Research/education only; not for clinical use.
