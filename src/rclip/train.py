@@ -6,7 +6,7 @@ from time import time
 import torch
 import torch.optim as optim
 import yaml
-
+from torch.amp import GradScaler
 from .data import build_dataloaders
 from .models import CLIPMini, clip_loss
 from .utils import set_seed, git_hash, make_run_dir, write_latest, save_json
@@ -54,8 +54,9 @@ def main(cfg_path: str) -> None:
         lr=float(cfg["train"]["lr"]),
         weight_decay=float(cfg["train"]["weight_decay"]),
     )
-    scaler = torch.cuda.amp.GradScaler(enabled=bool(cfg["train"].get("amp", True)))
-
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    scaler = GradScaler(device_type=device, enabled=(device == "cuda" and bool(cfg["train"].get("amp", True))))
+    pin = (device == "cuda")
     run_dir = make_run_dir(cfg["paths"]["results_dir"])
     save_json(
         {
