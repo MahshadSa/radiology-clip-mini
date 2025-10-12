@@ -1,9 +1,8 @@
+.venv/
 __pycache__/
-*.ipynb_checkpoints/
-venv/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
 results/
 data/
-*.pt
-*.ckpt
-.ipynb_checkpoints/
-.venv/
+.DS_Store
