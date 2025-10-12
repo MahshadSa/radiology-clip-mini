@@ -1,15 +1,26 @@
+seed: 42
+
 data:
   cache_dir: data/hf
-  split_spec: train[:500]   
-  max_patients: 30          
+  split_spec: train[:500]
+  max_patients: 30
   image_size: 320
   num_workers: 2
   split_file: data/splits.json
 
 train:
-  epochs: 4                
-  batch_size: 16            
-  amp: true
+  epochs: 4
+  batch_size: 16
   lr: 3e-4
   weight_decay: 1e-4
   grad_clip: 1.0
+  amp: true
+
+model:
+  embed_dim: 256
+  image_encoder: resnet18
+  text_encoder: distilbert-base-uncased
+  temperature_init: 0.07
+
+paths:
+  results_dir: results
