@@ -167,23 +167,23 @@ elif "images" in ds.features:
         batch_size=int(cfg["train"]["batch_size"]),
         shuffle=True,
         num_workers=num_workers,
-        pin_memory=True,
-        collate_fn=collate,
+        pin_memory=pin,
+        collate_fn=collate_batch,
     )
     dl_val = DataLoader(
         val,
         batch_size=64,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=True,
-        collate_fn=collate,
+        pin_memory=pin,
+        collate_fn=collate_batch,
     )
     dl_test = DataLoader(
         test,
         batch_size=64,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=True,
-        collate_fn=collate,
+        pin_memory=pin,
+        collate_fn=collate_batch,
     )
     return {"train": dl_train, "val": dl_val, "test": dl_test}
