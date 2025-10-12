@@ -1,14 +1,13 @@
 seed: 42
 
 data:
-  data:
   cache_dir: data/hf
-  split_spec: train
+  split_spec: train[:1000]           
   max_patients: 50
-            
   image_size: 320
   num_workers: 2
-  split_file: data/splits.json  # created by scripts/make_splits.py
+  split_file: data/splits.json
+
 
 train:
   epochs: 6
