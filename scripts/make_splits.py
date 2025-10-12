@@ -1,62 +1,37 @@
 from __future__ import annotations
-
-import argparse
+import json, random
 from pathlib import Path
+from datasets import load_dataset
 
-from src.data import (
-    load_iu_xray_flat,
-    build_indices_with_subsample,
-    save_splits_json,
-)
+from rclip.data import pick_text, get_patient_id
 
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Create patient-level train/val/test splits for IU X-Ray with a ~N-example subsample."
-    )
-    parser.add_argument("--max_samples", type=int, default=50,
-                        help="Target number of examples (keeps whole patients until ~this size).")
-    parser.add_argument("--val_frac", type=float, default=0.10,
-                        help="Validation fraction by patient (0–1).")
-    parser.add_argument("--test_frac", type=float, default=0.10,
-                        help="Test fraction by patient (0–1).")
-    parser.add_argument("--seed", type=int, default=42,
-                        help="Random seed.")
-    parser.add_argument("--out", type=str, default="data/splits.json",
-                        help="Output JSON path for the splits.")
-    parser.add_argument("--preview", action="store_true",
-                        help="Print split sizes to the console.")
-    return parser.parse_args()
-
-
-def main() -> None:
-    args = parse_args()
-
-    print("Loading IU X-Ray (OpenI) via datasets...")
-    data = load_iu_xray_flat()
-    n_total = len(data["patient_id"])
-    print(f"Total usable examples: {n_total}")
-
-    print(f"Building subsample (~{args.max_samples}) with patient-level splits...")
-    splits = build_indices_with_subsample(
-        patient_ids=data["patient_id"],
-        max_samples=args.max_samples,
-        val_frac=args.val_frac,
-        test_frac=args.test_frac,
-        seed=args.seed,
-    )
-
-    out_path = Path(args.out)
-    save_splits_json(splits, out_path)
-    print(f"Saved splits to: {out_path.resolve()}")
-
-    if args.preview:
-        n_train = len(splits["train"])
-        n_val = len(splits["val"])
-        n_test = len(splits["test"])
-        n_sum = n_train + n_val + n_test
-        print(f"Split sizes  ->  train: {n_train} | val: {n_val} | test: {n_test} | total: {n_sum}")
-
+def main(out_path="data/splits.json", max_patients=50, val_frac=0.1, test_frac=0.1, seed=42):
+    ds = load_dataset("iu_xray")["train"]
+    rng = random.Random(seed)
+    pids = []
+    seen = set()
+    for r in ds:
+        if r.get("image") is None: 
+            continue
+        if not pick_text(r): 
+            continue
+        pid = get_patient_id(r)
+        if pid not in seen:
+            seen.add(pid); pids.append(pid)
+    rng.shuffle(pids)
+    if max_patients and max_patients > 0:
+        pids = pids[:max_patients]
+    n = len(pids)
+    n_test = max(1, int(n * test_frac))
+    n_val  = max(1, int(n * val_frac))
+    splits = {
+        "train": pids[n_test+n_val:],
+        "val":   pids[n_test:n_test+n_val],
+        "test":  pids[:n_test],
+    }
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(out_path).write_text(json.dumps(splits, indent=2))
+    print(f"wrote {out_path} ({len(splits['train'])}/{len(splits['val'])}/{len(splits['test'])} pids)")
 
 if __name__ == "__main__":
     main()
