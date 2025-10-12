@@ -1,0 +1,16 @@
+LICENSE
+README.md
+pyproject.toml
+setup.cfg
+src/radiology_clip_mini.egg-info/PKG-INFO
+src/radiology_clip_mini.egg-info/SOURCES.txt
+src/radiology_clip_mini.egg-info/dependency_links.txt
+src/radiology_clip_mini.egg-info/top_level.txt
+src/rclip/__init__.py
+src/rclip/data.py
+src/rclip/eval.py
+src/rclip/models.py
+src/rclip/text.py
+src/rclip/train.py
+src/rclip/utils.py
+src/rclip/viz.py
