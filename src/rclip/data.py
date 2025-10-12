@@ -92,8 +92,9 @@ def build_dataloaders(cfg):
     max_patients = int(cfg["data"].get("max_patients", 50))
     split_file = cfg["data"].get("split_file", "data/splits.json")
 
-    ds = load_dataset("iu_xray")["train"]  # iu_xray provides everything under 'train'
-    sp = Path(split_file)
+    spec = cfg["data"].get("split_spec", "train")
+    cache_dir = cfg["data"].get("cache_dir", None)
+    ds = load_dataset("ykumards/open-i", split=spec, cache_dir=cache_dir)    sp = Path(split_file)
     if sp.exists():
         splits = json.loads(sp.read_text())
     else:
