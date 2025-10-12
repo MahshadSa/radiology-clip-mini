@@ -73,15 +73,25 @@ class IUXRayPairs(Dataset):
         ])
         self.keep: List[int] = []
         for i, rec in enumerate(self.ds):
-    if pick_text(rec) and has_image(rec):
-        try:
-            _ = get_pil_image(rec)   # quick decode test
-            self.keep.append(i)
-        except Exception:
-            pass
-
+            if pick_text(rec) and has_image(rec):
+                try:
+                    # quick decode test; skip bad rows
+                    _ = get_pil_image(rec)
+                except Exception:
+                    continue
+                self.keep.append(i)
 
     def __len__(self) -> int:
+        return len(self.keep)
+
+    def __getitem__(self, i: int):
+        rec = self.ds[self.keep[i]]
+        img = get_pil_image(rec).convert("RGB")
+        txt = pick_text(rec)
+        pid = get_patient_id(rec)
+        img = self.tform(img)
+        return {"image": img, "text": txt, "pid": pid}
+
         return len(self.keep)
 
     def __getitem__(self, i: int):
