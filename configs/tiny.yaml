@@ -1,9 +1,11 @@
 seed: 42
 
 data:
-  dataset: iu_xray
-  text_field_priority: [findings, impression, report, text]
-  max_patients: 50            # small, fast demo
+  data:
+  cache_dir: data/hf
+  split_spec: train
+  max_patients: 50
+            
   image_size: 320
   num_workers: 2
   split_file: data/splits.json  # created by scripts/make_splits.py
