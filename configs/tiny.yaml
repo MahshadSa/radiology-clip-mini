@@ -5,7 +5,7 @@ data:
   split_spec: train[:500]
   max_patients: 30
   image_size: 320
-  num_workers: 2
+  num_workers: 0
   split_file: data/splits.json
 
 train:
@@ -14,7 +14,7 @@ train:
   lr: 3e-4
   weight_decay: 1e-4
   grad_clip: 1.0
-  amp: true
+  amp: false
 
 model:
   embed_dim: 256
