@@ -5,6 +5,7 @@ import io
 import json
 import random
 import base64
+from datasets import load_dataset, Image as HFImage, Sequence
 
 from PIL import Image
 import torch
@@ -41,24 +42,6 @@ def get_patient_id(rec: Dict) -> str:
 
 import binascii
 
-def _to_pil(x) -> Image.Image:
-    # 1) already PIL
-    if isinstance(x, Image.Image):
-        return x.convert("RGB")
-    # 2) raw bytes
-    if isinstance(x, (bytes, bytearray)):
-        return Image.open(io.BytesIO(x)).convert("RGB")
-    # 3) str → try base64, else treat as file path
-    if isinstance(x, str):
-        # try base64
-        try:
-            b = base64.b64decode(x, validate=True)
-            return Image.open(io.BytesIO(b)).convert("RGB")
-        except (binascii.Error, ValueError):
-            p = Path(x)
-            if p.exists():
-                return Image.open(p).convert("RGB")
-    raise TypeError(f"Unsupported image type: {type(x)!r}")
 
 def has_image(rec: Dict) -> bool:
     if "image" in rec and rec["image"] is not None:
@@ -71,13 +54,11 @@ def has_image(rec: Dict) -> bool:
 
 def get_pil_image(rec: Dict) -> Image.Image:
     if "image" in rec and rec["image"] is not None:
-        return _to_pil(rec["image"])
+        return rec["image"].convert("RGB")
     if "images" in rec and rec["images"]:
-        return _to_pil(rec["images"][0])  # first view
-    if "image_path" in rec:
-        return _to_pil(rec["image_path"])
-    if "img_path" in rec:
-        return _to_pil(rec["img_path"])
+        return rec["images"][0].convert("RGB")
+    if "image_path" in rec or "img_path" in rec:
+        return Image.open(rec.get("image_path", rec.get("img_path"))).convert("RGB")
     raise KeyError("No image field found")
 
 
@@ -92,8 +73,13 @@ class IUXRayPairs(Dataset):
         ])
         self.keep: List[int] = []
         for i, rec in enumerate(self.ds):
-            if has_image(rec) and pick_text(rec):
-                self.keep.append(i)
+    if pick_text(rec) and has_image(rec):
+        try:
+            _ = get_pil_image(rec)   # quick decode test
+            self.keep.append(i)
+        except Exception:
+            pass
+
 
     def __len__(self) -> int:
         return len(self.keep)
@@ -146,7 +132,14 @@ def build_dataloaders(cfg: Dict):
     cache_dir = cfg["data"].get("cache_dir", None)
 
     ds = load_dataset("ykumards/open-i", split=spec, cache_dir=cache_dir)
-
+    if "image" in ds.features:
+    if not isinstance(ds.features["image"], HFImage):
+        ds = ds.cast_column("image", HFImage())
+elif "images" in ds.features:
+    # list/sequence of images
+    feat = ds.features["images"]
+    if not (hasattr(feat, "feature") and isinstance(feat.feature, HFImage)):
+        ds = ds.cast_column("images", Sequence(HFImage()))
     sp = Path(split_file)
     if sp.exists():
         splits = json.loads(sp.read_text())
