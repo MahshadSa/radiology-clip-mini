@@ -1,5 +1,5 @@
 from __future__ import annotations
-import argparse, json, yaml
+import argparse, yaml
 from pathlib import Path
 import numpy as np
 import torch
@@ -17,10 +17,10 @@ def embed_split(model, loader, device):
         zs_img.append(zi.cpu()); zs_txt.append(zt.cpu())
     return torch.cat(zs_img), torch.cat(zs_txt)
 
-def recall_at_k(sim, ks=(1,5,10)):
+def recall_at_k(sim: torch.Tensor, ks=(1, 5, 10)):
     # rows = queries, cols = candidates
     ranks = sim.argsort(dim=1, descending=True)
-    gt = torch.arange(sim.size(0))[:, None]
+    gt = torch.arange(sim.size(0), device=sim.device)[:, None]  # <- ensure same device
     hits = (ranks[:, : max(ks)] == gt).cpu().numpy()
     out = {}
     for k in ks:
@@ -32,7 +32,7 @@ def recall_at_k(sim, ks=(1,5,10)):
     out["MedR"] = float(np.median(rr))
     return out
 
-def ndcg_at_k(sim, k=10):
+def ndcg_at_k(sim: torch.Tensor, k: int = 10):
     ranks = sim.argsort(dim=1, descending=True)
     dcgs = []
     for i in range(sim.size(0)):
@@ -43,7 +43,7 @@ def ndcg_at_k(sim, k=10):
         else:
             dcg = 0.0
         dcgs.append(dcg)
-    return {"nDCG@10": float(np.mean(dcgs))}
+    return {f"nDCG@{k}": float(np.mean(dcgs))}  # <- use the actual k in the key
 
 def main(cfg_path: str, ckpt_path: str):
     with open(cfg_path, "r", encoding="utf-8") as f:
