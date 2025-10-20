@@ -7,6 +7,7 @@ import torch
 import torch.optim as optim
 import yaml
 from torch.amp import GradScaler
+
 from .data import build_dataloaders
 from .models import CLIPMini, clip_loss
 from .utils import set_seed, git_hash, make_run_dir, write_latest, save_json
@@ -33,6 +34,7 @@ def _val_r1(model: CLIPMini, dls, device: str) -> float:
     zt = torch.cat(zs_txt, 0)
     sim = zi @ zt.t()
     ranks = sim.argsort(dim=1, descending=True)
+    # R@1
     return float((ranks[:, 0] == torch.arange(sim.size(0))).float().mean().item())
 
 
@@ -54,9 +56,12 @@ def main(cfg_path: str) -> None:
         lr=float(cfg["train"]["lr"]),
         weight_decay=float(cfg["train"]["weight_decay"]),
     )
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    scaler = GradScaler(device_type=device, enabled=(device == "cuda" and bool(cfg["train"].get("amp", True))))
-    pin = (device == "cuda")
+
+    scaler = GradScaler(
+        device_type=device,
+        enabled=(device == "cuda" and bool(cfg["train"].get("amp", True))),
+    )
+
     run_dir = make_run_dir(cfg["paths"]["results_dir"])
     save_json(
         {
@@ -70,9 +75,10 @@ def main(cfg_path: str) -> None:
     )
 
     best_r1 = -1.0
-    model.train()
     for epoch in range(1, int(cfg["train"]["epochs"]) + 1):
+        model.train()  # <-- ensure training mode each epoch
         tot_loss, n = 0.0, 0
+
         for batch in dls["train"]:
             imgs = batch["images"].to(device, non_blocking=True)
             toks = model.text_enc.tokenize(batch["texts"]).to(device)
@@ -93,6 +99,7 @@ def main(cfg_path: str) -> None:
             n += imgs.size(0)
 
         avg_loss = tot_loss / max(1, n)
+
         try:
             r1 = _val_r1(model, dls, device)
         except Exception:
