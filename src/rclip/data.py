@@ -129,9 +129,9 @@ def build_dataloaders(cfg: Dict):
     pin_memory = bool(cfg.get("train", {}).get("pin_memory", True))
     train_bs = int(cfg.get("train", {}).get("batch_size", 16))
 
-    ds = load_dataset("ykumards/open-i", split=spec, cache_dir=cache_dir)
+    ds_name = cfg["data"].get("hf_dataset", "ykumards/open-i")
+    ds = load_dataset(ds_name, split=spec, cache_dir=cache_dir)
 
-    # Ensure image columns have proper Image() features
     if "image" in ds.features:
         if not isinstance(ds.features["image"], HFImage):
             ds = ds.cast_column("image", HFImage())
