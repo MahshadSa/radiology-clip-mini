@@ -1,17 +1,14 @@
 from __future__ import annotations
 from pathlib import Path
-from typing import Dict, List, Tuple
-import io
+from typing import Dict, List, Tuple, Set
 import json
 import random
-import base64
-from datasets import load_dataset, Image as HFImage, Sequence
 
+from datasets import load_dataset, Image as HFImage, Sequence
 from PIL import Image
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
-from datasets import load_dataset
 
 TEXT_PRIORITY: Tuple[str, ...] = (
     "findings", "impression", "report", "text",
@@ -40,8 +37,6 @@ def get_patient_id(rec: Dict) -> str:
     v = str(rec.get("id", "unknown"))
     return v.split("_")[0]
 
-import binascii
-
 
 def has_image(rec: Dict) -> bool:
     if "image" in rec and rec["image"] is not None:
@@ -52,6 +47,7 @@ def has_image(rec: Dict) -> bool:
         return True
     return False
 
+
 def get_pil_image(rec: Dict) -> Image.Image:
     if "image" in rec and rec["image"] is not None:
         return rec["image"].convert("RGB")
@@ -60,7 +56,6 @@ def get_pil_image(rec: Dict) -> Image.Image:
     if "image_path" in rec or "img_path" in rec:
         return Image.open(rec.get("image_path", rec.get("img_path"))).convert("RGB")
     raise KeyError("No image field found")
-
 
 
 class IUXRayPairs(Dataset):
@@ -75,8 +70,7 @@ class IUXRayPairs(Dataset):
         for i, rec in enumerate(self.ds):
             if pick_text(rec) and has_image(rec):
                 try:
-                    # quick decode test; skip bad rows
-                    _ = get_pil_image(rec)
+                    _ = get_pil_image(rec)  # decode test
                 except Exception:
                     continue
                 self.keep.append(i)
@@ -92,20 +86,11 @@ class IUXRayPairs(Dataset):
         img = self.tform(img)
         return {"image": img, "text": txt, "pid": pid}
 
-        return len(self.keep)
-
-    def __getitem__(self, i: int):
-        rec = self.ds[self.keep[i]]
-        img = get_pil_image(rec)
-        txt = pick_text(rec)
-        pid = get_patient_id(rec)
-        img = self.tform(img)
-        return {"image": img, "text": txt, "pid": pid}
-
 
 def _make_patient_splits(records, max_patients: int, val_frac=0.1, test_frac=0.1, seed=42):
     rng = random.Random(seed)
-    pids, seen = [], set()
+    pids: List[str] = []
+    seen: Set[str] = set()
     for r in records:
         if has_image(r) and pick_text(r):
             pid = get_patient_id(r)
@@ -117,14 +102,14 @@ def _make_patient_splits(records, max_patients: int, val_frac=0.1, test_frac=0.1
         pids = pids[:max_patients]
     n = len(pids)
     n_test = max(1, int(n * test_frac)) if n >= 3 else max(0, n - 2)
-    n_val = max(1, int(n * val_frac)) if n >= 3 else 1 if n >= 2 else 0
+    n_val = max(1, int(n * val_frac)) if n >= 3 else (1 if n >= 2 else 0)
     test_p = set(pids[:n_test])
     val_p = set(pids[n_test:n_test + n_val])
     train_p = set(pids[n_test + n_val:])
     return {"train": list(train_p), "val": list(val_p), "test": list(test_p)}
 
 
-def _filter_by_pids(hf_ds, keep_pids: set):
+def _filter_by_pids(hf_ds, keep_pids: Set[str]):
     idx = [
         i for i, r in enumerate(hf_ds)
         if get_patient_id(r) in keep_pids and pick_text(r) and has_image(r)
@@ -140,21 +125,26 @@ def build_dataloaders(cfg: Dict):
     split_file = cfg["data"].get("split_file", "data/splits.json")
     spec = cfg["data"].get("split_spec", "train")
     cache_dir = cfg["data"].get("cache_dir", None)
+    seed = int(cfg.get("seed", 42))
+    pin_memory = bool(cfg.get("train", {}).get("pin_memory", True))
+    train_bs = int(cfg.get("train", {}).get("batch_size", 16))
 
     ds = load_dataset("ykumards/open-i", split=spec, cache_dir=cache_dir)
+
+    # Ensure image columns have proper Image() features
     if "image" in ds.features:
-    if not isinstance(ds.features["image"], HFImage):
-        ds = ds.cast_column("image", HFImage())
+        if not isinstance(ds.features["image"], HFImage):
+            ds = ds.cast_column("image", HFImage())
     elif "images" in ds.features:
-    # list/sequence of images
-    feat = ds.features["images"]
-    if not (hasattr(feat, "feature") and isinstance(feat.feature, HFImage)):
-        ds = ds.cast_column("images", Sequence(HFImage()))
+        feat = ds.features["images"]
+        if not (hasattr(feat, "feature") and isinstance(feat.feature, HFImage)):
+            ds = ds.cast_column("images", Sequence(HFImage()))
+
     sp = Path(split_file)
     if sp.exists():
         splits = json.loads(sp.read_text())
     else:
-        splits = _make_patient_splits(ds, max_patients=max_patients, seed=int(cfg["seed"]))
+        splits = _make_patient_splits(ds, max_patients=max_patients, seed=seed)
         sp.parent.mkdir(parents=True, exist_ok=True)
         sp.write_text(json.dumps(splits, indent=2))
 
@@ -170,30 +160,31 @@ def build_dataloaders(cfg: Dict):
     def collate(batch: List[Dict]):
         imgs = torch.stack([b["image"] for b in batch])
         texts = [b["text"] for b in batch]
-        return {"images": imgs, "texts": texts}
+        pids = [b["pid"] for b in batch]
+        return {"images": imgs, "texts": texts, "pids": pids}
 
     dl_train = DataLoader(
         train,
-        batch_size=int(cfg["train"]["batch_size"]),
+        batch_size=train_bs,
         shuffle=True,
         num_workers=num_workers,
-        pin_memory=pin,
-        collate_fn=collate_batch,
+        pin_memory=pin_memory,
+        collate_fn=collate,
     )
     dl_val = DataLoader(
         val,
         batch_size=64,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=pin,
-        collate_fn=collate_batch,
+        pin_memory=pin_memory,
+        collate_fn=collate,
     )
     dl_test = DataLoader(
         test,
         batch_size=64,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=pin,
-        collate_fn=collate_batch,
+        pin_memory=pin_memory,
+        collate_fn=collate,
     )
     return {"train": dl_train, "val": dl_val, "test": dl_test}
