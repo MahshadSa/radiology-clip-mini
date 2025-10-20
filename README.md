@@ -16,11 +16,11 @@ Minimal CLIP-style baseline on **Open-I (IU X-Ray)** (~50 paired cases) for imag
 
 ```
 radiology-clip-mini/
-├─ configs/      # YAML configs (explicit hyper-params)
-├─ notebooks/    # thin wrappers calling library code
-├─ results/      # run outputs (metrics, ckpts, figs) — git-ignored
-├─ src/rclip/    # library code (data, models, train, eval, viz)
-└─ scripts/      # small utilities
+├─ configs/    # YAML configs (explicit hyper-params)
+├─ notebooks/  # thin wrappers calling library code
+├─ results/   # run outputs (metrics, ckpts, figs) — git-ignored
+├─ src/rclip/   # library code (data, models, train, eval, viz)
+└─ scripts/   # small utilities
 ```
 
 ## Quickstart (local, Bash)
@@ -74,7 +74,7 @@ python -m rclip.viz  --ckpt "$CKPT"
 ```yaml
 seed: 42
 data:
-  dataset: openi
+  hf_dataset: ykumards/open-i
   max_patients: 50
   val_frac: 0.1
   test_frac: 0.1
