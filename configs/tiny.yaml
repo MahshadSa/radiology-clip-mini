@@ -1,6 +1,7 @@
 seed: 42
 
 data:
+  hf_dataset: ykumards/open-i
   cache_dir: data/hf
   split_spec: train[:500]
   max_patients: 30
