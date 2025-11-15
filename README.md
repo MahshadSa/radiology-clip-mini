@@ -10,7 +10,6 @@ Minimal CLIP-style baseline on **Open-I (IU X-Ray)** (~50 paired cases) for imag
 * **Eval:** Recall@1/5/10, Median Rank, nDCG@10
 * **Hardware:** GTX-1650 or Kaggle T4; RAM ≥ 8 GB
 
-> **Why this repo (NKI fit):** compact, reproducible **vision–language retrieval** baseline with patient-wise splits and honest metrics—exactly the kind of multimodal building block to scale to oncology CT/MRI (Project 2), and a stepping stone toward 3D encoders (Project 1).
 
 ## Repo layout
 
