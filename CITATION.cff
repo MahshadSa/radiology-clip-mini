@@ -1,0 +1,1 @@
+cff-version: 1.2.0echo title: "radiology-clip-mini"echo authors:echo   - family-names: "Sarikhani"echo     given-names: "Mahshad"echo version: "0.1.0"echo date-released: "2025-12-02"echo url: "https://github.com/MahshadSa/radiology-clip-mini"echo message: "If you use this project, please cite it as below."

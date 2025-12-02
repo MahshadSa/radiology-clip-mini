@@ -1,2 +1,1 @@
-results/echo data/echo __pycache__/echo *.ptecho *.ckptecho .ipynb_checkpoints/
-# Virtual environmentsecho .venv/echo venv/echo ENV/echo env/
+# Project data and outputsecho data/echo results/echoecho # Python cachesecho __pycache__/echo src/rclip/__pycache__/echo scripts/__pycache__/echoecho # Virtual environmentsecho .venv/echo venv/echo env/echo ENV/echoecho # Jupyterecho .ipynb_checkpoints/
