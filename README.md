@@ -113,22 +113,7 @@ paths:
 ```
 
 ---
-## Model Architecture Overview
 
-```mermaid
-graph LR
-    A[Chest X-ray Image] --> B[ResNet-18 Encoder]
-    B --> C[Image Embedding (256-D)]
-
-    D[Clinical Report Text] --> E[DistilBERT Encoder]
-    E --> F[Text Embedding (256-D)]
-
-    C --> G[Cosine Similarity / τ]
-    F --> G
-
-    G --> H[Image↔Text Retrieval]
-  ```
----
 
 ## Retrieval performance (tiny experiment)
 
