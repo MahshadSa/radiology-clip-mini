@@ -1,5 +1,11 @@
 # radiology-clip-mini
 
+![tests](https://github.com/MahshadSa/radiology-clip-mini/actions/workflows/tests.yml/badge.svg)
+![license](https://img.shields.io/badge/license-MIT-blue.svg)
+![python](https://img.shields.io/badge/python-3.11-blue)
+
+
+
 Minimal CLIP-style baseline on the IU X-Ray dataset for image–text retrieval, with a compact training pipeline, evaluation suite, and Grad-CAM visualization. Designed as a clean, reproducible reference implementation.
 
 ---
@@ -107,6 +113,22 @@ paths:
 ```
 
 ---
+## Model Architecture Overview
+
+```mermaid
+graph LR
+    A[Chest X-ray Image] --> B[ResNet-18 Encoder]
+    B --> C[Image Embedding (256-D)]
+
+    D[Clinical Report Text] --> E[DistilBERT Encoder]
+    E --> F[Text Embedding (256-D)]
+
+    C --> G[Cosine Similarity / τ]
+    F --> G
+
+    G --> H[Image↔Text Retrieval]
+  ```
+---
 
 ## Retrieval performance (tiny experiment)
 
@@ -120,6 +142,24 @@ Using `train[:500]` (~30 patients), ResNet‑18 image encoder, and DistilBERT te
 Metrics are written automatically to `results/<run>/metrics.json`.
 
 ---
+## Example Image→Text Retrieval
+
+A sample retrieval grid from the validation set. The first image is the query, followed by its top retrieved matches.
+
+<p align="center">
+  <img src="figs/retrieval_grid.png" width="600">
+</p>
+
+---
+## Grad-CAM Example
+
+Grad-CAM style visualization of the last convolutional block of the image encoder for a sample chest X-ray.
+
+<p align="center">
+  <img src="figs/gradcam_example.png" width="400">
+</p>
+
+---
 
 ## Reproducibility notes
 
@@ -127,6 +167,25 @@ Metrics are written automatically to `results/<run>/metrics.json`.
 * All metrics auto‑saved to the run directory.
 * Figures (`retrieval_grid.png`, `gradcam_example.png`) stored under `results/<run>/viz/`.
 * The notebook `notebooks/01_demo_radiology_clip_mini.ipynb` provides a small interactive walkthrough.
+
+---
+## Limitations
+
+- Uses a very small subset of OpenI for speed; full-dataset metrics will differ.
+- Only single-view IU X-Ray samples are used; multi-view fusion is not included.
+- The model is a small CLIP-style baseline (ResNet-18 + DistilBERT); stronger encoders can improve retrieval.
+- Clinical reports in OpenI have noise and incomplete fields; text quality affects performance.
+- Not intended for clinical decision-making.
+
+---
+## Roadmap
+
+- Add full IU X-Ray training configuration.
+- Compare against BiomedCLIP or PubMedCLIP.
+- Add multi-view (PA + lateral) fusion baseline.
+- Add zero-shot query examples for clinical phrases.
+- Add unit tests for data loaders and model forward passes.
+- Add a lightweight Streamlit demo for retrieval.
 
 ---
 
