@@ -1,1 +1,2 @@
 results/echo data/echo __pycache__/echo *.ptecho *.ckptecho .ipynb_checkpoints/
+# Virtual environmentsecho .venv/echo venv/echo ENV/echo env/
