@@ -3,6 +3,7 @@
 ![tests](https://github.com/MahshadSa/radiology-clip-mini/actions/workflows/tests.yml/badge.svg)
 ![license](https://img.shields.io/badge/license-MIT-blue.svg)
 ![python](https://img.shields.io/badge/python-3.11-blue)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17795012.svg)](https://doi.org/10.5281/zenodo.17795012)
 
 
 
@@ -185,3 +186,9 @@ Grad-CAM style visualization of the last convolutional block of the image encode
 
 MIT License.
 For research and educational purposes only; not for clinical decision‑making.
+
+---
+## DOI
+This repository is archived and versioned on Zenodo.  
+**DOI: https://doi.org/10.5281/zenodo.17795012**
+
