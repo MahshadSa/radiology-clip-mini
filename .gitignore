@@ -1,8 +1,1 @@
-.venv/
-__pycache__/
-*.pyc
-*.pyo
-.ipynb_checkpoints/
-results/
-data/
-.DS_Store
+results/echo data/echo __pycache__/echo *.ptecho *.ckptecho .ipynb_checkpoints/

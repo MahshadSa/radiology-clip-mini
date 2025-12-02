@@ -1,12 +1,16 @@
 from __future__ import annotations
+
 import argparse
 from pathlib import Path
 from time import time
 
+from zmq import device
+
 import torch
 import torch.optim as optim
 import yaml
-from torch.amp import GradScaler
+from torch.amp import GradScaler, autocast
+
 from .data import build_dataloaders
 from .models import CLIPMini, clip_loss
 from .utils import set_seed, git_hash, make_run_dir, write_latest, save_json
@@ -54,9 +58,11 @@ def main(cfg_path: str) -> None:
         lr=float(cfg["train"]["lr"]),
         weight_decay=float(cfg["train"]["weight_decay"]),
     )
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    scaler = GradScaler(device_type=device, enabled=(device == "cuda" and bool(cfg["train"].get("amp", True))))
+
+    use_amp = (device == "cuda") and bool(cfg["train"].get("amp", True))
+    scaler = GradScaler(enabled=use_amp)
     pin = (device == "cuda")
+
     run_dir = make_run_dir(cfg["paths"]["results_dir"])
     save_json(
         {
@@ -70,22 +76,28 @@ def main(cfg_path: str) -> None:
     )
 
     best_r1 = -1.0
-    model.train()
+
     for epoch in range(1, int(cfg["train"]["epochs"]) + 1):
+        model.train()
         tot_loss, n = 0.0, 0
+
         for batch in dls["train"]:
             imgs = batch["images"].to(device, non_blocking=True)
             toks = model.text_enc.tokenize(batch["texts"]).to(device)
 
             opt.zero_grad(set_to_none=True)
-            with torch.cuda.amp.autocast(enabled=scaler.is_enabled()):
+            with autocast(device_type=device, enabled=scaler.is_enabled()):
                 sim, _, _ = model(imgs, toks)
                 loss = clip_loss(sim)
 
             scaler.scale(loss).backward()
+
             if float(cfg["train"]["grad_clip"]) > 0:
                 scaler.unscale_(opt)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), float(cfg["train"]["grad_clip"]))
+                torch.nn.utils.clip_grad_norm_(
+                    model.parameters(), float(cfg["train"]["grad_clip"])
+                )
+
             scaler.step(opt)
             scaler.update()
 
@@ -93,12 +105,16 @@ def main(cfg_path: str) -> None:
             n += imgs.size(0)
 
         avg_loss = tot_loss / max(1, n)
+
         try:
             r1 = _val_r1(model, dls, device)
         except Exception:
             r1 = 0.0
 
-        print(f"epoch {epoch} | loss {avg_loss:.4f} | val R@1 {r1:.3f} | τ {model.temperature.item():.4f}")
+        print(
+            f"epoch {epoch} | loss {avg_loss:.4f} | "
+            f"val R@1 {r1:.3f} | τ {model.temperature.item():.4f}"
+        )
 
         ckpt = Path(run_dir) / "checkpoint.pt"
         torch.save({"model": model.state_dict(), "epoch": epoch}, ckpt)
@@ -111,7 +127,10 @@ def main(cfg_path: str) -> None:
                 Path(run_dir) / "best.pt",
             )
 
-    print(f"done. latest → {Path(run_dir) / 'checkpoint.pt'} ; best → {Path(run_dir) / 'best.pt'}")
+    print(
+        f"done. latest → {Path(run_dir) / 'checkpoint.pt'} ; "
+        f"best → {Path(run_dir) / 'best.pt'}"
+    )
 
 
 if __name__ == "__main__":

@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from typing import Tuple
+
 import math
 import torch
 import torch.nn as nn
@@ -7,64 +9,94 @@ import torch.nn.functional as F
 from torchvision.models import resnet18, ResNet18_Weights
 from transformers import DistilBertModel, DistilBertTokenizerFast
 
+
 class ImageEncoder(nn.Module):
-    def __init__(self, embed_dim: int = 256):
+    def __init__(self, embed_dim: int = 256, train_backbone: bool = True):
         super().__init__()
         base = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
-        self.backbone = nn.Sequential(*list(base.children())[:-2])  # up to last conv
+        self.backbone = nn.Sequential(*list(base.children())[:-2])
         self.pool = nn.AdaptiveAvgPool2d(1)
         self.proj = nn.Linear(512, embed_dim)
 
-    def forward(self, x):
-        feats = self.backbone(x)                 # (B, 512, H/32, W/32)
-        pooled = self.pool(feats).flatten(1)     # (B, 512)
-        z = self.proj(pooled)                    # (B, D)
-        z = F.normalize(z, dim=-1)
-        return z
+        if not train_backbone:
+            for p in self.backbone.parameters():
+                p.requires_grad = False
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        feats = self.backbone(x)
+        pooled = self.pool(feats).flatten(1)
+        z = self.proj(pooled)
+        return F.normalize(z, dim=-1)
+
 
 class TextEncoder(nn.Module):
-    def __init__(self, embed_dim: int = 256, model_name: str = "distilbert-base-uncased"):
+    def __init__(
+        self,
+        embed_dim: int = 256,
+        model_name: str = "distilbert-base-uncased",
+        max_length: int = 128,
+        train_bert: bool = True,
+    ):
         super().__init__()
         self.tok = DistilBertTokenizerFast.from_pretrained(model_name)
         self.bert = DistilBertModel.from_pretrained(model_name)
         self.proj = nn.Linear(self.bert.config.hidden_size, embed_dim)
+        self.max_length = max_length
 
-    def tokenize(self, texts, max_length=128):
+        if not train_bert:
+            for p in self.bert.parameters():
+                p.requires_grad = False
+
+    def tokenize(self, texts) -> dict:
         return self.tok(
             texts,
-            padding=True, truncation=True, max_length=max_length,
-            return_tensors="pt"
+            padding=True,
+            truncation=True,
+            max_length=self.max_length,
+            return_tensors="pt",
         )
 
-    def forward(self, batch_tokens):
-        out = self.bert(**batch_tokens)          # last_hidden_state 
-        cls = out.last_hidden_state[:, 0]        # [CLS]-like token
-        z = self.proj(cls)                        # (B, D)
-        z = F.normalize(z, dim=-1)
-        return z
+    def forward(self, batch_tokens: dict) -> torch.Tensor:
+        out = self.bert(**batch_tokens)
+        cls = out.last_hidden_state[:, 0]
+        z = self.proj(cls)
+        return F.normalize(z, dim=-1)
+
 
 class CLIPMini(nn.Module):
-    def __init__(self, embed_dim=256, text_model="distilbert-base-uncased", tau_init=0.07):
+    def __init__(
+        self,
+        embed_dim: int = 256,
+        text_model: str = "distilbert-base-uncased",
+        tau_init: float = 0.07,
+        train_backbone: bool = True,
+        train_bert: bool = True,
+        max_text_length: int = 128,
+    ):
         super().__init__()
-        self.image_enc = ImageEncoder(embed_dim)
-        self.text_enc  = TextEncoder(embed_dim, text_model)
-        # temperature as log-scale parameter (stable learning)
-        self.log_tau = nn.Parameter(torch.log(torch.tensor(tau_init)))
+        self.image_enc = ImageEncoder(embed_dim, train_backbone=train_backbone)
+        self.text_enc = TextEncoder(
+            embed_dim=embed_dim,
+            model_name=text_model,
+            max_length=max_text_length,
+            train_bert=train_bert,
+        )
+        self.log_tau = nn.Parameter(torch.log(torch.tensor(tau_init, dtype=torch.float32)))
 
     @property
-    def temperature(self):
+    def temperature(self) -> torch.Tensor:
         return self.log_tau.exp().clamp(1e-3, 1.0)
 
-    def forward(self, images, text_tokens):
-        zi = self.image_enc(images)              # (B, D)
-        zt = self.text_enc(text_tokens)          # (B, D)
-        sim = zi @ zt.t()                        # cosine similarity (normalized)
+    def forward(self, images: torch.Tensor, text_tokens: dict) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        zi = self.image_enc(images)
+        zt = self.text_enc(text_tokens)
+        sim = zi @ zt.t()
         sim = sim / self.temperature
         return sim, zi, zt
 
+
 def clip_loss(sim: torch.Tensor) -> torch.Tensor:
-    """Symmetric InfoNCE over similarity matrix (B, B)."""
     labels = torch.arange(sim.size(0), device=sim.device)
-    loss_i = F.cross_entropy(sim, labels)        # image->text
-    loss_t = F.cross_entropy(sim.t(), labels)    # text->image
+    loss_i = F.cross_entropy(sim, labels)
+    loss_t = F.cross_entropy(sim.t(), labels)
     return 0.5 * (loss_i + loss_t)
